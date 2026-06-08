@@ -1311,8 +1311,11 @@ async def seed():
         for dept in all_depts:
             dept_code_lower = dept.short_code.lower()
             start_idx = 2 if dept.short_code == "CSE" else 1
+            num_to_seed = 24 if dept.short_code == "CSE" else 25
             
-            for idx, template in enumerate(asset_templates, start_idx):
+            for offset in range(num_to_seed):
+                idx = start_idx + offset
+                template = asset_templates[offset % len(asset_templates)]
                 tag_seq = f"{idx:03d}"
                 asset_tag = f"NIT-{dept.short_code}-26-{tag_seq}"
                 
@@ -1325,7 +1328,7 @@ async def seed():
                     
                 db.add(Asset(
                     asset_tag=asset_tag,
-                    name=f"{dept.short_code} {template['name']}",
+                    name=f"{dept.short_code} {template['name']} #{idx}",
                     category=template["category"],
                     department_id=dept.id,
                     building=template["building"].format(dept_code=dept.short_code),
@@ -1335,15 +1338,15 @@ async def seed():
                     legacy_asset_tag=f"{template['legacy_prefix']}-26{idx:02d}",
                     fund_source=template["fund_source"],
                     condition=template["condition"],
-                    purchase_date=date(2026, 1, 10 + idx),
+                    purchase_date=date(2026, 1, 10 + (idx % 20)),
                     unit_cost=template["unit_cost"],
-                    warranty_expiry=date(2029, 1, 10 + idx),
+                    warranty_expiry=date(2029, 1, 10 + (idx % 20)),
                     quantity=1,
                     supplier_name=f"{dept.short_code} Seed Vendor Pvt. Ltd.",
                     supplier_address=f"Tech Park, {dept.short_code} Street",
                     bill_number=f"BILL-{dept.short_code}-26{idx:02d}",
-                    bill_date=date(2026, 1, 5 + idx),
-                    delivery_date=date(2026, 1, 10 + idx),
+                    bill_date=date(2026, 1, 5 + (idx % 20)),
+                    delivery_date=date(2026, 1, 10 + (idx % 20)),
                     stock_register_volume="Vol 1",
                     stock_register_page=f"Page {10 + idx}",
                     remarks=template["remarks"],
@@ -1355,7 +1358,7 @@ async def seed():
                 ))
             
             clean_dept = dept.short_code.lower().strip()
-            total_seeded = start_idx + len(asset_templates) - 1
+            total_seeded = start_idx + num_to_seed - 1
             await db.execute(text(f"DROP SEQUENCE IF EXISTS asset_seq_{clean_dept};"))
             await db.execute(text(f"CREATE SEQUENCE asset_seq_{clean_dept} START {total_seeded + 1};"))
 

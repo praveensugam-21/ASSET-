@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { QrCode, IndianRupee } from 'lucide-react';
+import { QrCode, IndianRupee, Inbox } from 'lucide-react';
 import { Asset } from '../../types';
 
 interface AssetTableProps {
@@ -84,8 +84,14 @@ export const AssetTable: React.FC<AssetTableProps> = ({ filteredAssets, conditio
           ))}
           {filteredAssets.length === 0 && (
             <tr>
-              <td colSpan={10} className="text-center py-10 text-slate-500 text-sm font-medium">
-                No assets match your search/filter parameters.
+              <td colSpan={10} className="text-center py-12 text-slate-500">
+                <div className="flex flex-col items-center justify-center space-y-2">
+                  <Inbox className="h-10 w-10 text-slate-300" />
+                  <p className="text-base font-semibold text-slate-700">No assets found</p>
+                  <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                    We couldn't find any assets matching your search/filter parameters. Try clearing some filters or registering a new asset.
+                  </p>
+                </div>
               </td>
             </tr>
           )}

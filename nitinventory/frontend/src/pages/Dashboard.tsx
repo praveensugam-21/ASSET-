@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Box, BarChart3, LayoutGrid, ArrowRight } from "lucide-react";
+import { Box, BarChart3, LayoutGrid, ArrowRight, CheckCircle, Wrench, AlertTriangle } from "lucide-react";
 import { assetsApi } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
@@ -102,7 +102,7 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {/* Primary Stats */}
-      <div className="max-w-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <StatCard
           icon={<Box size={24} />}
           label="Total Assets"
@@ -110,6 +110,30 @@ export const DashboardPage: React.FC = () => {
           colorClass="text-blue-600"
           borderClass="border-l-blue-600"
           bgClass="bg-blue-50/20"
+        />
+        <StatCard
+          icon={<CheckCircle size={24} />}
+          label="Working Assets"
+          value={stats?.by_condition?.working || 0}
+          colorClass="text-green-600"
+          borderClass="border-l-green-600"
+          bgClass="bg-green-50/20"
+        />
+        <StatCard
+          icon={<Wrench size={24} />}
+          label="Under Repair"
+          value={stats?.by_condition?.under_repair || 0}
+          colorClass="text-yellow-600"
+          borderClass="border-l-yellow-600"
+          bgClass="bg-yellow-50/20"
+        />
+        <StatCard
+          icon={<AlertTriangle size={24} />}
+          label="Obsolete Assets"
+          value={stats?.by_condition?.obsolete || 0}
+          colorClass="text-slate-600"
+          borderClass="border-l-slate-600"
+          bgClass="bg-slate-50/20"
         />
       </div>
 

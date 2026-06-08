@@ -36,10 +36,10 @@ export const AssetListPage: React.FC = () => {
   const [filterDept, setFilterDept] = useState('');
 
   const [page, setPage] = useState(1);
-  const limit = 50;
+  const [limit, setLimit] = useState(10);
 
   const { data: assetsData, isLoading } = useQuery({
-    queryKey: ['assets', page, searchTerm, filterYear, filterCategory, filterCondition, filterStatus, filterFundSource, filterDept],
+    queryKey: ['assets', page, limit, searchTerm, filterYear, filterCategory, filterCondition, filterStatus, filterFundSource, filterDept],
     queryFn: () => assetsApi.list({
       skip: (page - 1) * limit,
       limit,
@@ -56,6 +56,33 @@ export const AssetListPage: React.FC = () => {
   const assets = assetsData?.items || [];
   const total = assetsData?.total || 0;
   const totalPages = Math.ceil(total / limit) || 1;
+
+  // Generate smart pagination page numbers
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    const delta = 1;
+    
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || (i >= page - delta && i <= page + delta)) {
+        pages.push(i);
+      }
+    }
+
+    const withEllipsis: (number | string)[] = [];
+    let prev: number | null = null;
+    for (const p of pages) {
+      if (prev !== null) {
+        if ((p as number) - prev === 2) {
+          withEllipsis.push(prev + 1);
+        } else if ((p as number) - prev > 2) {
+          withEllipsis.push('...');
+        }
+      }
+      withEllipsis.push(p);
+      prev = p as number;
+    }
+    return withEllipsis;
+  };
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
@@ -339,20 +366,20 @@ export const AssetListPage: React.FC = () => {
               type="text"
               placeholder="Search assets..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
               className="input-field w-full pl-9 text-sm"
             />
           </div>
 
           <div>
-            <select value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="input-field w-full text-sm">
+            <select value={filterYear} onChange={(e) => { setFilterYear(e.target.value); setPage(1); }} className="input-field w-full text-sm">
               <option value="">All Years</option>
               {uniqueYears.map(yr => <option key={yr} value={yr}>{yr}</option>)}
             </select>
           </div>
 
           <div>
-            <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="input-field w-full text-sm">
+            <select value={filterCategory} onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }} className="input-field w-full text-sm">
               <option value="">All Categories</option>
               <option value="lab_equipment">Lab Equipment</option>
               <option value="furniture">Furniture</option>
@@ -362,7 +389,7 @@ export const AssetListPage: React.FC = () => {
           </div>
 
           <div>
-            <select value={filterCondition} onChange={(e) => setFilterCondition(e.target.value)} className="input-field w-full text-sm">
+            <select value={filterCondition} onChange={(e) => { setFilterCondition(e.target.value); setPage(1); }} className="input-field w-full text-sm">
               <option value="">All Conditions</option>
               <option value="working">Working</option>
               <option value="damaged">Damaged</option>
@@ -372,7 +399,7 @@ export const AssetListPage: React.FC = () => {
           </div>
 
           <div>
-            <select value={filterFundSource} onChange={(e) => setFilterFundSource(e.target.value)} className="input-field w-full text-sm">
+            <select value={filterFundSource} onChange={(e) => { setFilterFundSource(e.target.value); setPage(1); }} className="input-field w-full text-sm">
               <option value="">All Funding</option>
               <option value="plan_fund">Plan Fund</option>
               <option value="non_plan_fund">Non-Plan Fund</option>
@@ -384,7 +411,7 @@ export const AssetListPage: React.FC = () => {
           </div>
 
           <div>
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="input-field w-full text-sm">
+            <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }} className="input-field w-full text-sm">
               <option value="">All Statuses</option>
               <option value="active">Active</option>
               <option value="flagged">Flagged</option>
@@ -394,7 +421,7 @@ export const AssetListPage: React.FC = () => {
 
           {isAdmin() && (
             <div>
-              <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} className="input-field w-full text-sm">
+              <select value={filterDept} onChange={(e) => { setFilterDept(e.target.value); setPage(1); }} className="input-field w-full text-sm">
                 <option value="">All Departments</option>
                 {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
@@ -408,28 +435,102 @@ export const AssetListPage: React.FC = () => {
       ) : (
         <>
           <AssetTable filteredAssets={filteredAssets} conditionColors={CONDITION_COLORS} page={page} limit={limit} />
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 sm:px-6 mt-4 rounded-lg shadow-sm">
-              <div className="flex flex-1 justify-between sm:hidden">
-                <button onClick={() => setPage(p => Math.max(p - 1, 1))} disabled={page === 1} className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Previous</button>
-                <button onClick={() => setPage(p => Math.min(p + 1, totalPages))} disabled={page === totalPages} className="relative ml-3 inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Next</button>
+          
+          <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 sm:px-6 mt-4 rounded-lg shadow-sm">
+            {/* Mobile View */}
+            <div className="flex flex-1 justify-between sm:hidden items-center">
+              <button
+                onClick={() => setPage(p => Math.max(p - 1, 1))}
+                disabled={page === 1}
+                className="relative inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed select-none"
+              >
+                Previous
+              </button>
+              <div className="text-xs text-slate-500 font-medium">
+                Page {totalPages === 0 ? 0 : page} of {totalPages}
               </div>
-              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-                <p className="text-sm text-slate-700">
-                  Showing <span className="font-medium">{(page - 1) * limit + 1}</span> to{' '}
-                  <span className="font-medium">{Math.min(page * limit, total)}</span> of{' '}
-                  <span className="font-medium">{total}</span> assets
-                </p>
-                <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm">
-                  <button onClick={() => setPage(p => Math.max(p - 1, 1))} disabled={page === 1} className="relative inline-flex items-center rounded-l-md px-3 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 disabled:opacity-50">Previous</button>
-                  {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map((p) => (
-                    <button key={p} onClick={() => setPage(p)} className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${p === page ? 'z-10 bg-[#1a3a6b] text-white' : 'text-slate-900 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'}`}>{p}</button>
-                  ))}
-                  <button onClick={() => setPage(p => Math.min(p + 1, totalPages))} disabled={page === totalPages} className="relative inline-flex items-center rounded-r-md px-3 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 disabled:opacity-50">Next</button>
-                </nav>
-              </div>
+              <button
+                onClick={() => setPage(p => Math.min(p + 1, totalPages))}
+                disabled={page === totalPages || totalPages === 0}
+                className="relative ml-3 inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed select-none"
+              >
+                Next
+              </button>
             </div>
-          )}
+
+            {/* Desktop View */}
+            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+              <div className="flex items-center gap-6">
+                <p className="text-sm text-slate-700">
+                  Showing <span className="font-semibold">{total === 0 ? 0 : (page - 1) * limit + 1}</span> to{' '}
+                  <span className="font-semibold">{Math.min(page * limit, total)}</span> of{' '}
+                  <span className="font-semibold">{total}</span> assets
+                </p>
+                
+                <div className="flex items-center gap-2 text-sm text-slate-700">
+                  <span className="font-medium text-xs uppercase tracking-wider text-slate-500">Rows per page:</span>
+                  <select
+                    value={limit}
+                    onChange={(e) => {
+                      setLimit(Number(e.target.value));
+                      setPage(1);
+                    }}
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-sm font-semibold text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none cursor-pointer transition-colors hover:border-slate-400"
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </div>
+              </div>
+
+              <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm bg-white" aria-label="Pagination">
+                <button
+                  onClick={() => setPage(p => Math.max(p - 1, 1))}
+                  disabled={page === 1}
+                  className="relative inline-flex items-center rounded-l-md px-3 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+                
+                {getPageNumbers().map((p, idx) => {
+                  if (p === '...') {
+                    return (
+                      <span
+                        key={`ellipsis-${idx}`}
+                        className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-inset ring-slate-300 focus:outline-offset-0 select-none"
+                      >
+                        ...
+                      </span>
+                    );
+                  }
+                  
+                  return (
+                    <button
+                      key={`page-${p}`}
+                      onClick={() => setPage(p as number)}
+                      className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold transition-colors focus:z-20 ${
+                        p === page
+                          ? 'z-10 bg-[#1a3a6b] text-white ring-1 ring-inset ring-[#1a3a6b]'
+                          : 'text-slate-900 ring-1 ring-inset ring-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+
+                <button
+                  onClick={() => setPage(p => Math.min(p + 1, totalPages))}
+                  disabled={page === totalPages || totalPages === 0}
+                  className="relative inline-flex items-center rounded-r-md px-3 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </nav>
+            </div>
+          </div>
         </>
       )}
 

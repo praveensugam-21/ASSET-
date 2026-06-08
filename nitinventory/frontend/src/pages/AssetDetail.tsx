@@ -97,8 +97,15 @@ export const AssetDetailPage: React.FC = () => {
     (e.target as HTMLFormElement).reset();
   };
 
-  if (isLoading) return <div>Loading...</div>;
-  if (!asset) return <div>Asset not found</div>;
+  if (isLoading) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center space-y-3">
+        <div className="w-10 h-10 border-4 border-slate-200 border-t-[#1a3a6b] rounded-full animate-spin"></div>
+        <p className="text-slate-500 font-medium text-sm">Loading asset details...</p>
+      </div>
+    );
+  }
+  if (!asset) return <div className="card p-8 text-center text-slate-500 font-medium">Asset not found</div>;
 
   return (
     <div className="space-y-6 pb-20">
@@ -320,8 +327,8 @@ export const AssetDetailPage: React.FC = () => {
                   >
                     <option value="working">Working/Good</option>
                     <option value="damaged">Damaged</option>
-                    <option value="partial">Partial</option>
-                    <option value="maintenance">Maintenance</option>
+                    <option value="under_repair">Under Repair</option>
+                    <option value="obsolete">Obsolete</option>
                   </select>
                 </div>
               </div>

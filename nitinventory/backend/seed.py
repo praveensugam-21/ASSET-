@@ -354,6 +354,36 @@ async def seed():
                         users[email] = new_u
                 await db.flush()
 
+            # 3.6 Ensure standard HOD and Faculty users exist for each department
+            all_depts_q = await db.execute(select(Department))
+            all_depts_list = all_depts_q.scalars().all()
+            print("  Ensuring standard HOD and Faculty users exist for each department...")
+            for dept in all_depts_list:
+                dept_code_lower = dept.short_code.lower()
+                dept_users_spec = [
+                    (f"Prof. HOD {dept.short_code}", f"hod.{dept_code_lower}@nitt.edu", "Head of Department", "hod"),
+                    (f"Dr. Faculty {dept.short_code} A", f"faculty.{dept_code_lower}@nitt.edu", "Assistant Professor", "faculty"),
+                    (f"Dr. Faculty {dept.short_code} B", f"faculty2.{dept_code_lower}@nitt.edu", "Assistant Professor", "faculty"),
+                ]
+                for name, email, desig, role_val in dept_users_spec:
+                    user_check = await db.execute(select(User).where(User.email == email))
+                    existing_u = user_check.scalar_one_or_none()
+                    if not existing_u:
+                        new_u = User(
+                            name=name,
+                            email=email,
+                            hashed_password=DEMO_PASSWORD,
+                            designation=desig,
+                            gender="male",
+                            role_id=roles[role_val].id,
+                            department_id=dept.id,
+                            is_active=True,
+                            is_approved=True,
+                        )
+                        db.add(new_u)
+                        users[email] = new_u
+            await db.flush()
+
         # 4. Financial Year
         fy_labels = ["2025-26", "2026-27", "2027-28"]
         seeded_fys = {}
@@ -1128,294 +1158,206 @@ async def seed():
             passed_by_id=da.id
         ))
         # Registered asset for PR 8
-        # Seed 10 detailed assets consisting of all 24 fields populated
-        mock_assets_data = [
-            {
-                "name": "High-Performance GPU Workstation A",
-                "category": "computer",
-                "building": "CSE Block",
-                "room": "Research Lab 1",
-                "custodian": "Dr. A. Kumar",
-                "serial_number": "SN-DELL-GPU-8891",
-                "legacy_asset_tag": "OLD-CSE-GPU-01",
-                "fund_source": "plan_fund",
-                "condition": "working",
-                "purchase_date": date(2026, 1, 10),
-                "unit_cost": 150000.0,
-                "warranty_expiry": date(2029, 1, 10),
-                "quantity": 1,
-                "supplier_name": "M/s USAM Technology Solutions",
-                "supplier_address": "123 Anna Salai Chennai 600002",
-                "bill_number": "USAM/2026/1029",
-                "bill_date": date(2026, 1, 5),
-                "delivery_date": date(2026, 1, 10),
-                "stock_register_volume": "Vol 1",
-                "stock_register_page": "Page 12",
-                "remarks": "High-performance GPU node for deep learning research.",
-                "asset_source": "legacy",
-            },
-            {
-                "name": "Ergonomic Office Chair B",
-                "category": "furniture",
-                "building": "CSE Block",
-                "room": "HOD Office",
-                "custodian": "HOD CSE",
-                "serial_number": "SN-HERMAN-8822",
-                "legacy_asset_tag": "OLD-CSE-FUR-02",
-                "fund_source": "non_plan_fund",
-                "condition": "working",
-                "purchase_date": date(2026, 2, 14),
-                "unit_cost": 45000.0,
-                "warranty_expiry": date(2031, 2, 14),
-                "quantity": 1,
-                "supplier_name": "M/s Featherlite Office Systems",
-                "supplier_address": "456 Richmond Road Bangalore 560025",
-                "bill_number": "FL/2026/088",
-                "bill_date": date(2026, 2, 10),
-                "delivery_date": date(2026, 2, 14),
-                "stock_register_volume": "Vol 2",
-                "stock_register_page": "Page 50",
-                "remarks": "Ergonomic chair with lumbar support.",
-                "asset_source": "legacy",
-            },
-            {
-                "name": "Mass Spectrometer System",
-                "category": "lab_equipment",
-                "building": "CSE Building",
-                "room": "Research Lab 2",
-                "custodian": "Dr. A. Kumar",
-                "serial_number": "MS-998877",
-                "legacy_asset_tag": "OLD-CSE-EQP-03",
-                "fund_source": "research_fund",
-                "condition": "working",
-                "purchase_date": date(2026, 6, 1),
-                "unit_cost": 2400000.0,
-                "warranty_expiry": date(2029, 6, 1),
-                "quantity": 1,
-                "supplier_name": "Thermo Fisher Scientific",
-                "supplier_address": "Mumbai",
-                "bill_number": "INV-2026-88",
-                "bill_date": date(2026, 5, 25),
-                "delivery_date": date(2026, 6, 1),
-                "stock_register_volume": "Vol 1",
-                "stock_register_page": "Page 85",
-                "remarks": "Mass Spectrometer System for PAC research.",
-                "asset_source": "iris",
-            },
-            {
-                "name": "Smart Classroom Projector",
-                "category": "lab_equipment",
-                "building": "CSE Block",
-                "room": "LHC-101",
-                "custodian": "Dr. B. Prasad",
-                "serial_number": "SN-EPSON-552",
-                "legacy_asset_tag": "OLD-CSE-PRJ-04",
-                "fund_source": "dept_development_fund",
-                "condition": "under_repair",
-                "purchase_date": date(2026, 3, 20),
-                "unit_cost": 75000.0,
-                "warranty_expiry": date(2028, 3, 20),
-                "quantity": 1,
-                "supplier_name": "Epson India Pvt Ltd",
-                "supplier_address": "Connaught Place New Delhi 110001",
-                "bill_number": "EPS/DL/5521",
-                "bill_date": date(2026, 3, 15),
-                "delivery_date": date(2026, 3, 20),
-                "stock_register_volume": "Vol 3",
-                "stock_register_page": "Page 14",
-                "remarks": "HDMI projector with 4K support. Currently bulb replacement pending.",
-                "asset_source": "legacy",
-            },
-            {
-                "name": "Gigabit Network Switch 24-Port",
-                "category": "computer",
-                "building": "CSE Block",
-                "room": "Server Room",
-                "custodian": "Mr. R. Mani",
-                "serial_number": "SN-CISCO-9988",
-                "legacy_asset_tag": "OLD-CSE-NET-05",
-                "fund_source": "consultancy_fund",
-                "condition": "working",
-                "purchase_date": date(2026, 4, 5),
-                "unit_cost": 120000.0,
-                "warranty_expiry": date(2029, 4, 5),
-                "quantity": 1,
-                "supplier_name": "Cisco Systems India",
-                "supplier_address": "Outer Ring Road Bangalore 560103",
-                "bill_number": "CS-INV-990",
-                "bill_date": date(2026, 4, 1),
-                "delivery_date": date(2026, 4, 5),
-                "stock_register_volume": "Vol 1",
-                "stock_register_page": "Page 101",
-                "remarks": "Managed layer-3 switch for network core integration.",
-                "asset_source": "legacy",
-            },
-            {
-                "name": "Department Seminar Room Table",
-                "category": "furniture",
-                "building": "CSE Block",
-                "room": "Seminar Room",
-                "custodian": "HOD CSE",
-                "serial_number": "SN-WOOD-7711",
-                "legacy_asset_tag": "OLD-CSE-FUR-06",
-                "fund_source": "others",
-                "condition": "working",
-                "purchase_date": date(2025, 12, 10),
-                "unit_cost": 85000.0,
-                "warranty_expiry": date(2030, 12, 10),
-                "quantity": 1,
-                "supplier_name": "M/s Godrej Interio",
-                "supplier_address": "Vikhroli Mumbai 400079",
-                "bill_number": "GI/25/1129",
-                "bill_date": date(2025, 12, 5),
-                "delivery_date": date(2025, 12, 10),
-                "stock_register_volume": "Vol 2",
-                "stock_register_page": "Page 05",
-                "remarks": "Large teakwood conference table for seminar room.",
-                "asset_source": "legacy",
-            },
-            {
-                "name": "Logic Analyzer Tool",
-                "category": "lab_equipment",
-                "building": "CSE Block",
-                "room": "Hardware Lab",
-                "custodian": "Dr. S. Vignesh",
-                "serial_number": "SN-TEK-4433",
-                "legacy_asset_tag": "OLD-CSE-EQP-07",
-                "fund_source": "research_fund",
-                "condition": "working",
-                "purchase_date": date(2026, 1, 25),
-                "unit_cost": 320000.0,
-                "warranty_expiry": date(2028, 1, 25),
-                "quantity": 1,
-                "supplier_name": "Tektronix India Pvt Ltd",
-                "supplier_address": "Hosur Road Bangalore 560030",
-                "bill_number": "TEK-BLR-023",
-                "bill_date": date(2026, 1, 20),
-                "delivery_date": date(2026, 1, 25),
-                "stock_register_volume": "Vol 1",
-                "stock_register_page": "Page 115",
-                "remarks": "16-channel digital logic analyzer with pattern generator.",
-                "asset_source": "legacy",
-            },
-            {
-                "name": "Desktop PC Dell Optiplex",
-                "category": "computer",
-                "building": "CSE Block",
-                "room": "Computer Lab 1",
-                "custodian": "Dr. A. Kumar",
-                "serial_number": "SN-DELL-OPT-4411",
-                "legacy_asset_tag": "OLD-CSE-PC-08",
-                "fund_source": "plan_fund",
-                "condition": "damaged",
-                "purchase_date": date(2025, 11, 20),
-                "unit_cost": 65000.0,
-                "warranty_expiry": date(2028, 11, 20),
-                "quantity": 1,
-                "supplier_name": "Dell India Solutions",
-                "supplier_address": "Inner Ring Road Bangalore 560071",
-                "bill_number": "DELL/25/5512",
-                "bill_date": date(2025, 11, 15),
-                "delivery_date": date(2025, 11, 20),
-                "stock_register_volume": "Vol 4",
-                "stock_register_page": "Page 22",
-                "remarks": "Motherboard failure due to power surge. Flagged for verification.",
-                "asset_source": "legacy",
-            },
-            {
-                "name": "Online UPS 10KVA",
-                "category": "other",
-                "building": "CSE Block",
-                "room": "Server Room",
-                "custodian": "Mr. R. Mani",
-                "serial_number": "SN-APC-10K",
-                "legacy_asset_tag": "OLD-CSE-UPS-09",
-                "fund_source": "dept_development_fund",
-                "condition": "working",
-                "purchase_date": date(2026, 2, 28),
-                "unit_cost": 180000.0,
-                "warranty_expiry": date(2029, 2, 28),
-                "quantity": 1,
-                "supplier_name": "Schneider Electric India",
-                "supplier_address": "Tech Park Bangalore 560066",
-                "bill_number": "SE/UPS/451",
-                "bill_date": date(2026, 2, 25),
-                "delivery_date": date(2026, 2, 28),
-                "stock_register_volume": "Vol 1",
-                "stock_register_page": "Page 13",
-                "remarks": "External battery backup UPS system.",
-                "asset_source": "legacy",
-            },
-            {
-                "name": "Laser Jet Printer HP",
-                "category": "computer",
-                "building": "CSE Block",
-                "room": "Dept Office",
-                "custodian": "HOD CSE",
-                "serial_number": "SN-HP-LASER-221",
-                "legacy_asset_tag": "OLD-CSE-PRN-10",
-                "fund_source": "non_plan_fund",
-                "condition": "obsolete",
-                "purchase_date": date(2023, 5, 15),
-                "unit_cost": 28000.0,
-                "warranty_expiry": date(2025, 5, 15),
-                "quantity": 1,
-                "supplier_name": "HP India Sales Pvt Ltd",
-                "supplier_address": "Gurugram Haryana 122002",
-                "bill_number": "HP-INV-5512",
-                "bill_date": date(2023, 5, 10),
-                "delivery_date": date(2023, 5, 15),
-                "stock_register_volume": "Vol 5",
-                "stock_register_page": "Page 44",
-                "remarks": "Deprecated and obsolete printer, cartridge unavailable.",
-                "asset_source": "legacy",
-            }
-        ]
-
+        # Seed a rich set of physical assets for all 16 departments.
         from app.services.qr_service import QrService
         from datetime import timedelta
         qr_service = QrService()
 
-        for idx, asset_data in enumerate(mock_assets_data, 1):
-            tag_seq = f"{idx:03d}"
-            asset_tag = f"NIT-CSE-26-{tag_seq}"
-            qr_url = qr_service.generate(asset_tag)
-            
-            del_item_id = None
-            if asset_data["name"] == "Mass Spectrometer System":
-                del_item_id = di8.id
+        # 1. Mass Spectrometer for CSE (PR-linked)
+        mass_spec_tag = "NIT-CSE-26-001"
+        db.add(Asset(
+            asset_tag=mass_spec_tag,
+            name="Mass Spectrometer System",
+            category="lab_equipment",
+            department_id=cse.id,
+            building="CSE Building",
+            room="Research Lab 2",
+            custodian="Dr. A. Kumar",
+            serial_number="MS-998877",
+            legacy_asset_tag="OLD-CSE-EQP-03",
+            fund_source="research_fund",
+            condition="working",
+            purchase_date=date(2026, 6, 1),
+            unit_cost=2400000.0,
+            warranty_expiry=date(2029, 6, 1),
+            quantity=1,
+            supplier_name="Thermo Fisher Scientific",
+            supplier_address="Mumbai",
+            bill_number="INV-2026-88",
+            bill_date=date(2026, 5, 25),
+            delivery_date=date(2026, 6, 1),
+            stock_register_volume="Vol 1",
+            stock_register_page="Page 85",
+            remarks="Mass Spectrometer System for PAC research.",
+            asset_source="iris",
+            is_verified=True,
+            verified_at=datetime.utcnow() - timedelta(minutes=15),
+            created_at=datetime.utcnow() - timedelta(minutes=15),
+            qr_code_url=qr_service.generate(mass_spec_tag),
+            delivery_item_id=di8.id
+        ))
 
-            db.add(Asset(
-                asset_tag=asset_tag,
-                name=asset_data["name"],
-                category=asset_data["category"],
-                department_id=cse.id,
-                building=asset_data["building"],
-                room=asset_data["room"],
-                custodian=asset_data["custodian"],
-                serial_number=asset_data["serial_number"],
-                legacy_asset_tag=asset_data["legacy_asset_tag"],
-                fund_source=asset_data["fund_source"],
-                condition=asset_data["condition"],
-                purchase_date=asset_data["purchase_date"],
-                unit_cost=asset_data["unit_cost"],
-                warranty_expiry=asset_data["warranty_expiry"],
-                quantity=asset_data["quantity"],
-                supplier_name=asset_data["supplier_name"],
-                supplier_address=asset_data["supplier_address"],
-                bill_number=asset_data["bill_number"],
-                bill_date=asset_data["bill_date"],
-                delivery_date=asset_data["delivery_date"],
-                stock_register_volume=asset_data["stock_register_volume"],
-                stock_register_page=asset_data["stock_register_page"],
-                remarks=asset_data["remarks"],
-                asset_source=asset_data["asset_source"],
-                is_verified=True,
-                verified_at=datetime.utcnow() - timedelta(minutes=15 - idx),
-                created_at=datetime.utcnow() - timedelta(minutes=15 - idx),
-                qr_code_url=qr_url,
-                delivery_item_id=del_item_id
-            ))
+        # 2. Rich assets templates for all departments
+        asset_templates = [
+            {
+                "name": "High-Performance GPU Workstation",
+                "category": "computer",
+                "building": "{dept_code} Block",
+                "room": "Research Lab 1",
+                "custodian_type": "faculty_a",
+                "serial_prefix": "SN-{dept_code}-GPU",
+                "legacy_prefix": "OLD-{dept_code}-GPU",
+                "fund_source": "plan_fund",
+                "condition": "working",
+                "unit_cost": 150000.0,
+                "remarks": "High-performance GPU node for department research.",
+            },
+            {
+                "name": "Desktop PC Dell Optiplex",
+                "category": "computer",
+                "building": "{dept_code} Block",
+                "room": "UG Computer Lab",
+                "custodian_type": "faculty_b",
+                "serial_prefix": "SN-{dept_code}-PC",
+                "legacy_prefix": "OLD-{dept_code}-PC",
+                "fund_source": "dept_development_fund",
+                "condition": "working",
+                "unit_cost": 65000.0,
+                "remarks": "Standard desktop PC for undergraduate student lab.",
+            },
+            {
+                "name": "Ergonomic Office Chair",
+                "category": "furniture",
+                "building": "{dept_code} Block",
+                "room": "Faculty Cabin",
+                "custodian_type": "faculty_a",
+                "serial_prefix": "SN-{dept_code}-FUR",
+                "legacy_prefix": "OLD-{dept_code}-FUR",
+                "fund_source": "non_plan_fund",
+                "condition": "working",
+                "unit_cost": 12000.0,
+                "remarks": "Ergonomic chair with lumbar support for faculty cabin.",
+            },
+            {
+                "name": "Teakwood Seminar Table",
+                "category": "furniture",
+                "building": "{dept_code} Block",
+                "room": "Seminar Room",
+                "custodian_type": "hod",
+                "serial_prefix": "SN-{dept_code}-TAB",
+                "legacy_prefix": "OLD-{dept_code}-TAB",
+                "fund_source": "others",
+                "condition": "working",
+                "unit_cost": 45000.0,
+                "remarks": "Teakwood conference table for seminar room.",
+            },
+            {
+                "name": "Smart Classroom Projector",
+                "category": "lab_equipment",
+                "building": "{dept_code} Block",
+                "room": "Seminar Room",
+                "custodian_type": "hod",
+                "serial_prefix": "SN-{dept_code}-PRJ",
+                "legacy_prefix": "OLD-{dept_code}-PRJ",
+                "fund_source": "plan_fund",
+                "condition": "under_repair",
+                "unit_cost": 75000.0,
+                "remarks": "HDMI projector with 4K support. Currently bulb replacement pending.",
+            },
+            {
+                "name": "Digital Storage Oscilloscope",
+                "category": "lab_equipment",
+                "building": "{dept_code} Block",
+                "room": "General Lab",
+                "custodian_type": "faculty_b",
+                "serial_prefix": "SN-{dept_code}-OSC",
+                "legacy_prefix": "OLD-{dept_code}-OSC",
+                "fund_source": "research_fund",
+                "condition": "working",
+                "unit_cost": 85000.0,
+                "remarks": "Digital storage oscilloscope for laboratory experiments.",
+            },
+            {
+                "name": "Online UPS 10KVA",
+                "category": "other",
+                "building": "{dept_code} Block",
+                "room": "Server Room",
+                "custodian_type": "faculty_a",
+                "serial_prefix": "SN-{dept_code}-UPS",
+                "legacy_prefix": "OLD-{dept_code}-UPS",
+                "fund_source": "consultancy_fund",
+                "condition": "working",
+                "unit_cost": 180000.0,
+                "remarks": "Online UPS with battery backup for server rack.",
+            },
+            {
+                "name": "Split Air Conditioner 2 Ton",
+                "category": "other",
+                "building": "{dept_code} Block",
+                "room": "HOD Office",
+                "custodian_type": "hod",
+                "serial_prefix": "SN-{dept_code}-AC",
+                "legacy_prefix": "OLD-{dept_code}-AC",
+                "fund_source": "non_plan_fund",
+                "condition": "obsolete",
+                "unit_cost": 48000.0,
+                "remarks": "Old split air conditioner, recommended for disposal.",
+            },
+        ]
+
+        all_depts_q = await db.execute(select(Department))
+        all_depts = all_depts_q.scalars().all()
+
+        for dept in all_depts:
+            dept_code_lower = dept.short_code.lower()
+            start_idx = 2 if dept.short_code == "CSE" else 1
+            
+            for idx, template in enumerate(asset_templates, start_idx):
+                tag_seq = f"{idx:03d}"
+                asset_tag = f"NIT-{dept.short_code}-26-{tag_seq}"
+                
+                if template["custodian_type"] == "hod":
+                    custodian_name = f"Prof. HOD {dept.short_code}"
+                elif template["custodian_type"] == "faculty_a":
+                    custodian_name = f"Dr. Faculty {dept.short_code} A"
+                else:
+                    custodian_name = f"Dr. Faculty {dept.short_code} B"
+                    
+                db.add(Asset(
+                    asset_tag=asset_tag,
+                    name=f"{dept.short_code} {template['name']}",
+                    category=template["category"],
+                    department_id=dept.id,
+                    building=template["building"].format(dept_code=dept.short_code),
+                    room=template["room"],
+                    custodian=custodian_name,
+                    serial_number=f"{template['serial_prefix']}-26{idx:02d}",
+                    legacy_asset_tag=f"{template['legacy_prefix']}-26{idx:02d}",
+                    fund_source=template["fund_source"],
+                    condition=template["condition"],
+                    purchase_date=date(2026, 1, 10 + idx),
+                    unit_cost=template["unit_cost"],
+                    warranty_expiry=date(2029, 1, 10 + idx),
+                    quantity=1,
+                    supplier_name=f"{dept.short_code} Seed Vendor Pvt. Ltd.",
+                    supplier_address=f"Tech Park, {dept.short_code} Street",
+                    bill_number=f"BILL-{dept.short_code}-26{idx:02d}",
+                    bill_date=date(2026, 1, 5 + idx),
+                    delivery_date=date(2026, 1, 10 + idx),
+                    stock_register_volume="Vol 1",
+                    stock_register_page=f"Page {10 + idx}",
+                    remarks=template["remarks"],
+                    asset_source="legacy",
+                    is_verified=True,
+                    verified_at=datetime.utcnow() - timedelta(days=idx),
+                    created_at=datetime.utcnow() - timedelta(days=idx),
+                    qr_code_url=qr_service.generate(asset_tag)
+                ))
+            
+            clean_dept = dept.short_code.lower().strip()
+            total_seeded = start_idx + len(asset_templates) - 1
+            await db.execute(text(f"DROP SEQUENCE IF EXISTS asset_seq_{clean_dept};"))
+            await db.execute(text(f"CREATE SEQUENCE asset_seq_{clean_dept} START {total_seeded + 1};"))
 
         # Seed 4 free budget files for E2E testing
         for i, (item_name, amount) in enumerate([

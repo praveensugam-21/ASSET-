@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, FileText, Wallet, Package, Box, Settings,
-  Users, ChevronLeft, ChevronRight, LogOut, Bell, Menu, X,
-  Truck, AlertTriangle, BarChart2, User, Layers, Upload
+  LayoutDashboard, Box, Users, ChevronLeft, ChevronRight, LogOut, Menu,
+  BarChart2, User
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -84,10 +83,9 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               className={`${active ? 'nav-item-active' : 'nav-item'} ${collapsed && !mobile ? 'justify-center px-2' : ''}`}
               title={collapsed && !mobile ? item.label : undefined}
             >
-              {(!collapsed || mobile) ? (
+              <item.icon size={18} className={`${collapsed && !mobile ? '' : 'mr-3'} flex-shrink-0`} />
+              {(!collapsed || mobile) && (
                 <span>{item.label}</span>
-              ) : (
-                <span className="text-xs font-black tracking-wider text-slate-800">{item.label.substring(0, 2).toUpperCase()}</span>
               )}
             </Link>
           );
@@ -167,14 +165,15 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {user?.role && (
+              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-[#1a3a6b] border border-blue-200">
+                {user.role.name}
+              </span>
+            )}
             <div className="text-right hidden sm:block">
               <div className="text-xs font-bold text-slate-800">{user?.name}</div>
               <div className="text-xs text-slate-500">{user?.department?.name || 'Central Office'}</div>
             </div>
-            <button className="p-2 text-slate-500 hover:text-[#1a3a6b] hover:bg-slate-100 transition-colors relative border border-transparent hover:border-slate-300">
-              <Bell size={18} />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-600 border border-white"></span>
-            </button>
           </div>
         </header>
 

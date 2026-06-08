@@ -1,0 +1,266 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.0.3, pluggy-1.6.0
+rootdir: /app
+plugins: asyncio-1.4.0, anyio-4.13.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 5 items
+
+tests/test_asset_registry_features.py ...F.                              [100%]
+
+=================================== FAILURES ===================================
+____________________ test_csv_import_atomicity_and_remarks _____________________
+
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0xffff8d172720>
+
+    @pytest.mark.asyncio
+    async def test_csv_import_atomicity_and_remarks(db_session):
+        """Test that CSV import correctly parses the new schema and is fully atomic (rolls back on failure)."""
+        db_session.commit = db_session.flush
+    
+        user_q = await db_session.execute(
+            select(User).options(selectinload(User.role)).where(User.email == "hod.cse@nitt.edu")
+        )
+        hod_user = user_q.scalar_one()
+    
+        svc = AssetService(db_session)
+    
+        # 1. Valid CSV content
+        valid_csv = (
+            "Asset Tag,Asset Name,Category,Department,Building,Room,Custodian,Purchase Year,Condition,Remarks\n"
+            "CSV-TAG-01,Workstation Pro,computer,CSE,CSE Block,Lab 1,Dr. Kumar,2026,working,Imported via script\n"
+            "CSV-TAG-02,Lecture Chair,furniture,CSE,CSE Block,LHC-2,Dr. Kumar,2026,working,Classroom standard\n"
+        )
+    
+        res = await svc.import_assets_csv(valid_csv, hod_user)
+        assert "Successfully imported 2 assets" in res["message"]
+    
+        # Verify entries in DB
+        asset1_q = await db_session.execute(select(Asset).where(Asset.legacy_asset_tag == "CSV-TAG-01"))
+        asset1 = asset1_q.scalar_one()
+        assert asset1.name == "Workstation Pro"
+        assert asset1.remarks == "Imported via script"
+        assert asset1.asset_source == "legacy"
+    
+        # 2. Invalid CSV (duplicate legacy tag on the second row to trigger a validation failure)
+        invalid_csv = (
+            "Asset Tag,Asset Name,Category,Department,Building,Room,Custodian,Purchase Year,Condition,Remarks\n"
+            "CSV-TAG-03,Unique Asset,computer,CSE,CSE Block,Lab 1,Dr. Kumar,2026,working,Should not save\n"
+            "CSV-TAG-01,Duplicate Tag Asset,computer,CSE,CSE Block,Lab 1,Dr. Kumar,2026,working,Will cause rollback\n"
+        )
+    
+        with pytest.raises(HTTPException) as exc_info:
+            await svc.import_assets_csv(invalid_csv, hod_user)
+    
+        assert exc_info.value.status_code == 400
+        # The transaction must have rolled back. Check that CSV-TAG-03 was NOT saved.
+>       async with db_session.begin():
+                   ^^^^^^^^^^^^^^^^^^
+
+tests/test_asset_registry_features.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/session.py:1865: in start
+    await greenlet_spawn(
+/usr/local/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:190: in greenlet_spawn
+    result = context.switch(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/site-packages/sqlalchemy/orm/session.py:1927: in begin
+    trans = self._autobegin_t(begin=True)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/site-packages/sqlalchemy/orm/session.py:1877: in _autobegin_t
+    trans = SessionTransaction(
+/usr/local/lib/python3.12/site-packages/sqlalchemy/orm/session.py:931: in __init__
+    TransactionalContext._trans_ctx_check(session)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'sqlalchemy.engine.util.TransactionalContext'>
+subject = <sqlalchemy.orm.session.Session object at 0xffff8b475040>
+
+    @classmethod
+    def _trans_ctx_check(cls, subject: _TConsSubject) -> None:
+        trans_context = subject._trans_context_manager
+        if trans_context:
+            if not trans_context._transaction_is_active():
+>               raise exc.InvalidRequestError(
+                    "Can't operate on closed transaction inside context "
+                    "manager.  Please complete the context manager "
+                    "before emitting further commands."
+                )
+E               sqlalchemy.exc.InvalidRequestError: Can't operate on closed transaction inside context manager.  Please complete the context manager before emitting further commands.
+
+/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/util.py:111: InvalidRequestError
+----------------------------- Captured stdout call -----------------------------
+2026-06-05 05:26:00,489 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-06-05 05:26:00,489 INFO sqlalchemy.engine.Engine SELECT users.id, users.name, users.email, users.hashed_password, users.designation, users.gender, users.role_id, users.department_id, users.is_active, users.signature_path, users.is_approved, users.last_login_at, users.created_at 
+FROM users 
+WHERE users.email = $1::VARCHAR
+2026-06-05 05:26:00,489 INFO sqlalchemy.engine.Engine [cached since 0.1026s ago] ('hod.cse@nitt.edu',)
+2026-06-05 05:26:00,491 INFO sqlalchemy.engine.Engine SELECT role_managers.id AS role_managers_id, role_managers.name AS role_managers_name, role_managers.value AS role_managers_value, role_managers.group_key AS role_managers_group_key 
+FROM role_managers 
+WHERE role_managers.id IN ($1::INTEGER)
+2026-06-05 05:26:00,491 INFO sqlalchemy.engine.Engine [cached since 0.1014s ago] (2,)
+2026-06-05 05:26:00,491 INFO sqlalchemy.engine.Engine SELECT departments.id, departments.name, departments.short_code, departments.expert1_id, departments.expert2_id, departments.director_faculty_id 
+FROM departments
+2026-06-05 05:26:00,491 INFO sqlalchemy.engine.Engine [generated in 0.00005s] ()
+2026-06-05 05:26:00,492 INFO sqlalchemy.engine.Engine SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.legacy_asset_tag = $1::VARCHAR
+2026-06-05 05:26:00,493 INFO sqlalchemy.engine.Engine [generated in 0.00006s] ('CSV-TAG-01',)
+2026-06-05 05:26:00,493 INFO sqlalchemy.engine.Engine SELECT departments.id, departments.name, departments.short_code, departments.expert1_id, departments.expert2_id, departments.director_faculty_id 
+FROM departments 
+WHERE departments.id = $1::INTEGER
+2026-06-05 05:26:00,493 INFO sqlalchemy.engine.Engine [cached since 0.1029s ago] (1,)
+2026-06-05 05:26:00,494 INFO sqlalchemy.engine.Engine CREATE SEQUENCE IF NOT EXISTS asset_seq_cse START 1;
+2026-06-05 05:26:00,494 INFO sqlalchemy.engine.Engine [cached since 0.1025s ago] ()
+2026-06-05 05:26:00,494 INFO sqlalchemy.engine.Engine SELECT nextval('asset_seq_cse') FROM generate_series(1, $1);
+2026-06-05 05:26:00,494 INFO sqlalchemy.engine.Engine [cached since 0.1024s ago] (1,)
+2026-06-05 05:26:00,494 INFO sqlalchemy.engine.Engine SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.asset_tag = $1::VARCHAR
+2026-06-05 05:26:00,494 INFO sqlalchemy.engine.Engine [cached since 0.1018s ago] ('NIT-CSE-26-071',)
+2026-06-05 05:26:00,499 INFO sqlalchemy.engine.Engine INSERT INTO assets (asset_tag, name, category, department_id, building, room, custodian, serial_number, legacy_asset_tag, fund_source, condition, disposal_status, qr_code_url, purchase_date, unit_cost, warranty_expiry, delivery_item_id, remarks, is_verified, verified_at, asset_source, created_at) VALUES ($1::VARCHAR, $2::VARCHAR, $3::VARCHAR, $4::INTEGER, $5::VARCHAR, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::VARCHAR, $10::VARCHAR, $11::VARCHAR, $12::VARCHAR, $13::VARCHAR, $14::DATE, $15::FLOAT, $16::DATE, $17::INTEGER, $18::VARCHAR, $19::BOOLEAN, $20::TIMESTAMP WITHOUT TIME ZONE, $21::VARCHAR, now()) RETURNING assets.id, assets.created_at
+2026-06-05 05:26:00,499 INFO sqlalchemy.engine.Engine [cached since 0.09564s ago] ('NIT-CSE-26-071', 'Workstation Pro', 'computer', 1, 'CSE Block', 'Lab 1', 'Dr. Kumar', None, 'CSV-TAG-01', 'plan_fund', 'working', <DisposalStatus.ACTIVE: 'active'>, '/storage/qr/NIT-CSE-26-071.png', None, None, None, None, 'Imported via script', False, None, 'legacy')
+2026-06-05 05:26:00,500 INFO sqlalchemy.engine.Engine INSERT INTO asset_logs (asset_id, action, performed_by_id, old_value, new_value, performed_at) VALUES ($1::INTEGER, $2::VARCHAR, $3::INTEGER, $4::JSON, $5::JSON, $6::TIMESTAMP WITHOUT TIME ZONE) RETURNING asset_logs.id
+2026-06-05 05:26:00,500 INFO sqlalchemy.engine.Engine [cached since 0.09519s ago] (5, 'asset_registered', 5, 'null', '{"asset_tag": "NIT-CSE-26-071", "legacy_asset_tag": "CSV-TAG-01", "fund_source": "plan_fund", "condition": "working", "remarks": "Imported via script", "asset_source": "legacy"}', datetime.datetime(2026, 6, 5, 5, 26, 0, 500286))
+2026-06-05 05:26:00,501 INFO sqlalchemy.engine.Engine SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.legacy_asset_tag = $1::VARCHAR
+2026-06-05 05:26:00,501 INFO sqlalchemy.engine.Engine [cached since 0.008142s ago] ('CSV-TAG-02',)
+2026-06-05 05:26:00,501 INFO sqlalchemy.engine.Engine SELECT departments.id, departments.name, departments.short_code, departments.expert1_id, departments.expert2_id, departments.director_faculty_id 
+FROM departments 
+WHERE departments.id = $1::INTEGER
+2026-06-05 05:26:00,501 INFO sqlalchemy.engine.Engine [cached since 0.1106s ago] (1,)
+2026-06-05 05:26:00,501 INFO sqlalchemy.engine.Engine CREATE SEQUENCE IF NOT EXISTS asset_seq_cse START 1;
+2026-06-05 05:26:00,501 INFO sqlalchemy.engine.Engine [cached since 0.1101s ago] ()
+2026-06-05 05:26:00,501 INFO sqlalchemy.engine.Engine SELECT nextval('asset_seq_cse') FROM generate_series(1, $1);
+2026-06-05 05:26:00,501 INFO sqlalchemy.engine.Engine [cached since 0.1099s ago] (1,)
+2026-06-05 05:26:00,502 INFO sqlalchemy.engine.Engine SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.asset_tag = $1::VARCHAR
+2026-06-05 05:26:00,502 INFO sqlalchemy.engine.Engine [cached since 0.1091s ago] ('NIT-CSE-26-072',)
+2026-06-05 05:26:00,506 INFO sqlalchemy.engine.Engine INSERT INTO assets (asset_tag, name, category, department_id, building, room, custodian, serial_number, legacy_asset_tag, fund_source, condition, disposal_status, qr_code_url, purchase_date, unit_cost, warranty_expiry, delivery_item_id, remarks, is_verified, verified_at, asset_source, created_at) VALUES ($1::VARCHAR, $2::VARCHAR, $3::VARCHAR, $4::INTEGER, $5::VARCHAR, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::VARCHAR, $10::VARCHAR, $11::VARCHAR, $12::VARCHAR, $13::VARCHAR, $14::DATE, $15::FLOAT, $16::DATE, $17::INTEGER, $18::VARCHAR, $19::BOOLEAN, $20::TIMESTAMP WITHOUT TIME ZONE, $21::VARCHAR, now()) RETURNING assets.id, assets.created_at
+2026-06-05 05:26:00,506 INFO sqlalchemy.engine.Engine [cached since 0.1026s ago] ('NIT-CSE-26-072', 'Lecture Chair', 'furniture', 1, 'CSE Block', 'LHC-2', 'Dr. Kumar', None, 'CSV-TAG-02', 'plan_fund', 'working', <DisposalStatus.ACTIVE: 'active'>, '/storage/qr/NIT-CSE-26-072.png', None, None, None, None, 'Classroom standard', False, None, 'legacy')
+2026-06-05 05:26:00,507 INFO sqlalchemy.engine.Engine INSERT INTO asset_logs (asset_id, action, performed_by_id, old_value, new_value, performed_at) VALUES ($1::INTEGER, $2::VARCHAR, $3::INTEGER, $4::JSON, $5::JSON, $6::TIMESTAMP WITHOUT TIME ZONE) RETURNING asset_logs.id
+2026-06-05 05:26:00,507 INFO sqlalchemy.engine.Engine [cached since 0.1019s ago] (6, 'asset_registered', 5, 'null', '{"asset_tag": "NIT-CSE-26-072", "legacy_asset_tag": "CSV-TAG-02", "fund_source": "plan_fund", "condition": "working", "remarks": "Classroom standard", "asset_source": "legacy"}', datetime.datetime(2026, 6, 5, 5, 26, 0, 506987))
+2026-06-05 05:26:00,507 INFO sqlalchemy.engine.Engine SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.legacy_asset_tag = $1::VARCHAR
+2026-06-05 05:26:00,507 INFO sqlalchemy.engine.Engine [cached since 0.01458s ago] ('CSV-TAG-01',)
+2026-06-05 05:26:00,507 INFO sqlalchemy.engine.Engine SELECT departments.id, departments.name, departments.short_code, departments.expert1_id, departments.expert2_id, departments.director_faculty_id 
+FROM departments
+2026-06-05 05:26:00,507 INFO sqlalchemy.engine.Engine [cached since 0.01589s ago] ()
+2026-06-05 05:26:00,508 INFO sqlalchemy.engine.Engine SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.legacy_asset_tag = $1::VARCHAR
+2026-06-05 05:26:00,508 INFO sqlalchemy.engine.Engine [cached since 0.01518s ago] ('CSV-TAG-03',)
+2026-06-05 05:26:00,508 INFO sqlalchemy.engine.Engine SELECT departments.id, departments.name, departments.short_code, departments.expert1_id, departments.expert2_id, departments.director_faculty_id 
+FROM departments 
+WHERE departments.id = $1::INTEGER
+2026-06-05 05:26:00,508 INFO sqlalchemy.engine.Engine [cached since 0.1176s ago] (1,)
+2026-06-05 05:26:00,508 INFO sqlalchemy.engine.Engine CREATE SEQUENCE IF NOT EXISTS asset_seq_cse START 1;
+2026-06-05 05:26:00,508 INFO sqlalchemy.engine.Engine [cached since 0.1171s ago] ()
+2026-06-05 05:26:00,508 INFO sqlalchemy.engine.Engine SELECT nextval('asset_seq_cse') FROM generate_series(1, $1);
+2026-06-05 05:26:00,508 INFO sqlalchemy.engine.Engine [cached since 0.1168s ago] (1,)
+2026-06-05 05:26:00,508 INFO sqlalchemy.engine.Engine SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.asset_tag = $1::VARCHAR
+2026-06-05 05:26:00,508 INFO sqlalchemy.engine.Engine [cached since 0.1159s ago] ('NIT-CSE-26-073',)
+2026-06-05 05:26:00,513 INFO sqlalchemy.engine.Engine INSERT INTO assets (asset_tag, name, category, department_id, building, room, custodian, serial_number, legacy_asset_tag, fund_source, condition, disposal_status, qr_code_url, purchase_date, unit_cost, warranty_expiry, delivery_item_id, remarks, is_verified, verified_at, asset_source, created_at) VALUES ($1::VARCHAR, $2::VARCHAR, $3::VARCHAR, $4::INTEGER, $5::VARCHAR, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::VARCHAR, $10::VARCHAR, $11::VARCHAR, $12::VARCHAR, $13::VARCHAR, $14::DATE, $15::FLOAT, $16::DATE, $17::INTEGER, $18::VARCHAR, $19::BOOLEAN, $20::TIMESTAMP WITHOUT TIME ZONE, $21::VARCHAR, now()) RETURNING assets.id, assets.created_at
+2026-06-05 05:26:00,513 INFO sqlalchemy.engine.Engine [cached since 0.1096s ago] ('NIT-CSE-26-073', 'Unique Asset', 'computer', 1, 'CSE Block', 'Lab 1', 'Dr. Kumar', None, 'CSV-TAG-03', 'plan_fund', 'working', <DisposalStatus.ACTIVE: 'active'>, '/storage/qr/NIT-CSE-26-073.png', None, None, None, None, 'Should not save', False, None, 'legacy')
+2026-06-05 05:26:00,513 INFO sqlalchemy.engine.Engine INSERT INTO asset_logs (asset_id, action, performed_by_id, old_value, new_value, performed_at) VALUES ($1::INTEGER, $2::VARCHAR, $3::INTEGER, $4::JSON, $5::JSON, $6::TIMESTAMP WITHOUT TIME ZONE) RETURNING asset_logs.id
+2026-06-05 05:26:00,514 INFO sqlalchemy.engine.Engine [cached since 0.1088s ago] (7, 'asset_registered', 5, 'null', '{"asset_tag": "NIT-CSE-26-073", "legacy_asset_tag": "CSV-TAG-03", "fund_source": "plan_fund", "condition": "working", "remarks": "Should not save", "asset_source": "legacy"}', datetime.datetime(2026, 6, 5, 5, 26, 0, 513862))
+2026-06-05 05:26:00,514 INFO sqlalchemy.engine.Engine SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.legacy_asset_tag = $1::VARCHAR
+2026-06-05 05:26:00,514 INFO sqlalchemy.engine.Engine [cached since 0.0214s ago] ('CSV-TAG-01',)
+2026-06-05 05:26:00,514 INFO sqlalchemy.engine.Engine ROLLBACK
+------------------------------ Captured log call -------------------------------
+INFO     sqlalchemy.engine.Engine:base.py:2701 BEGIN (implicit)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT users.id, users.name, users.email, users.hashed_password, users.designation, users.gender, users.role_id, users.department_id, users.is_active, users.signature_path, users.is_approved, users.last_login_at, users.created_at 
+FROM users 
+WHERE users.email = $1::VARCHAR
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1026s ago] ('hod.cse@nitt.edu',)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT role_managers.id AS role_managers_id, role_managers.name AS role_managers_name, role_managers.value AS role_managers_value, role_managers.group_key AS role_managers_group_key 
+FROM role_managers 
+WHERE role_managers.id IN ($1::INTEGER)
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1014s ago] (2,)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT departments.id, departments.name, departments.short_code, departments.expert1_id, departments.expert2_id, departments.director_faculty_id 
+FROM departments
+INFO     sqlalchemy.engine.Engine:base.py:1846 [generated in 0.00005s] ()
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.legacy_asset_tag = $1::VARCHAR
+INFO     sqlalchemy.engine.Engine:base.py:1846 [generated in 0.00006s] ('CSV-TAG-01',)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT departments.id, departments.name, departments.short_code, departments.expert1_id, departments.expert2_id, departments.director_faculty_id 
+FROM departments 
+WHERE departments.id = $1::INTEGER
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1029s ago] (1,)
+INFO     sqlalchemy.engine.Engine:base.py:1846 CREATE SEQUENCE IF NOT EXISTS asset_seq_cse START 1;
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1025s ago] ()
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT nextval('asset_seq_cse') FROM generate_series(1, $1);
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1024s ago] (1,)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.asset_tag = $1::VARCHAR
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1018s ago] ('NIT-CSE-26-071',)
+INFO     sqlalchemy.engine.Engine:base.py:1846 INSERT INTO assets (asset_tag, name, category, department_id, building, room, custodian, serial_number, legacy_asset_tag, fund_source, condition, disposal_status, qr_code_url, purchase_date, unit_cost, warranty_expiry, delivery_item_id, remarks, is_verified, verified_at, asset_source, created_at) VALUES ($1::VARCHAR, $2::VARCHAR, $3::VARCHAR, $4::INTEGER, $5::VARCHAR, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::VARCHAR, $10::VARCHAR, $11::VARCHAR, $12::VARCHAR, $13::VARCHAR, $14::DATE, $15::FLOAT, $16::DATE, $17::INTEGER, $18::VARCHAR, $19::BOOLEAN, $20::TIMESTAMP WITHOUT TIME ZONE, $21::VARCHAR, now()) RETURNING assets.id, assets.created_at
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.09564s ago] ('NIT-CSE-26-071', 'Workstation Pro', 'computer', 1, 'CSE Block', 'Lab 1', 'Dr. Kumar', None, 'CSV-TAG-01', 'plan_fund', 'working', <DisposalStatus.ACTIVE: 'active'>, '/storage/qr/NIT-CSE-26-071.png', None, None, None, None, 'Imported via script', False, None, 'legacy')
+INFO     sqlalchemy.engine.Engine:base.py:1846 INSERT INTO asset_logs (asset_id, action, performed_by_id, old_value, new_value, performed_at) VALUES ($1::INTEGER, $2::VARCHAR, $3::INTEGER, $4::JSON, $5::JSON, $6::TIMESTAMP WITHOUT TIME ZONE) RETURNING asset_logs.id
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.09519s ago] (5, 'asset_registered', 5, 'null', '{"asset_tag": "NIT-CSE-26-071", "legacy_asset_tag": "CSV-TAG-01", "fund_source": "plan_fund", "condition": "working", "remarks": "Imported via script", "asset_source": "legacy"}', datetime.datetime(2026, 6, 5, 5, 26, 0, 500286))
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.legacy_asset_tag = $1::VARCHAR
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.008142s ago] ('CSV-TAG-02',)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT departments.id, departments.name, departments.short_code, departments.expert1_id, departments.expert2_id, departments.director_faculty_id 
+FROM departments 
+WHERE departments.id = $1::INTEGER
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1106s ago] (1,)
+INFO     sqlalchemy.engine.Engine:base.py:1846 CREATE SEQUENCE IF NOT EXISTS asset_seq_cse START 1;
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1101s ago] ()
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT nextval('asset_seq_cse') FROM generate_series(1, $1);
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1099s ago] (1,)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.asset_tag = $1::VARCHAR
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1091s ago] ('NIT-CSE-26-072',)
+INFO     sqlalchemy.engine.Engine:base.py:1846 INSERT INTO assets (asset_tag, name, category, department_id, building, room, custodian, serial_number, legacy_asset_tag, fund_source, condition, disposal_status, qr_code_url, purchase_date, unit_cost, warranty_expiry, delivery_item_id, remarks, is_verified, verified_at, asset_source, created_at) VALUES ($1::VARCHAR, $2::VARCHAR, $3::VARCHAR, $4::INTEGER, $5::VARCHAR, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::VARCHAR, $10::VARCHAR, $11::VARCHAR, $12::VARCHAR, $13::VARCHAR, $14::DATE, $15::FLOAT, $16::DATE, $17::INTEGER, $18::VARCHAR, $19::BOOLEAN, $20::TIMESTAMP WITHOUT TIME ZONE, $21::VARCHAR, now()) RETURNING assets.id, assets.created_at
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1026s ago] ('NIT-CSE-26-072', 'Lecture Chair', 'furniture', 1, 'CSE Block', 'LHC-2', 'Dr. Kumar', None, 'CSV-TAG-02', 'plan_fund', 'working', <DisposalStatus.ACTIVE: 'active'>, '/storage/qr/NIT-CSE-26-072.png', None, None, None, None, 'Classroom standard', False, None, 'legacy')
+INFO     sqlalchemy.engine.Engine:base.py:1846 INSERT INTO asset_logs (asset_id, action, performed_by_id, old_value, new_value, performed_at) VALUES ($1::INTEGER, $2::VARCHAR, $3::INTEGER, $4::JSON, $5::JSON, $6::TIMESTAMP WITHOUT TIME ZONE) RETURNING asset_logs.id
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1019s ago] (6, 'asset_registered', 5, 'null', '{"asset_tag": "NIT-CSE-26-072", "legacy_asset_tag": "CSV-TAG-02", "fund_source": "plan_fund", "condition": "working", "remarks": "Classroom standard", "asset_source": "legacy"}', datetime.datetime(2026, 6, 5, 5, 26, 0, 506987))
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.legacy_asset_tag = $1::VARCHAR
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.01458s ago] ('CSV-TAG-01',)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT departments.id, departments.name, departments.short_code, departments.expert1_id, departments.expert2_id, departments.director_faculty_id 
+FROM departments
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.01589s ago] ()
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.legacy_asset_tag = $1::VARCHAR
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.01518s ago] ('CSV-TAG-03',)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT departments.id, departments.name, departments.short_code, departments.expert1_id, departments.expert2_id, departments.director_faculty_id 
+FROM departments 
+WHERE departments.id = $1::INTEGER
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1176s ago] (1,)
+INFO     sqlalchemy.engine.Engine:base.py:1846 CREATE SEQUENCE IF NOT EXISTS asset_seq_cse START 1;
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1171s ago] ()
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT nextval('asset_seq_cse') FROM generate_series(1, $1);
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1168s ago] (1,)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.asset_tag = $1::VARCHAR
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1159s ago] ('NIT-CSE-26-073',)
+INFO     sqlalchemy.engine.Engine:base.py:1846 INSERT INTO assets (asset_tag, name, category, department_id, building, room, custodian, serial_number, legacy_asset_tag, fund_source, condition, disposal_status, qr_code_url, purchase_date, unit_cost, warranty_expiry, delivery_item_id, remarks, is_verified, verified_at, asset_source, created_at) VALUES ($1::VARCHAR, $2::VARCHAR, $3::VARCHAR, $4::INTEGER, $5::VARCHAR, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::VARCHAR, $10::VARCHAR, $11::VARCHAR, $12::VARCHAR, $13::VARCHAR, $14::DATE, $15::FLOAT, $16::DATE, $17::INTEGER, $18::VARCHAR, $19::BOOLEAN, $20::TIMESTAMP WITHOUT TIME ZONE, $21::VARCHAR, now()) RETURNING assets.id, assets.created_at
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1096s ago] ('NIT-CSE-26-073', 'Unique Asset', 'computer', 1, 'CSE Block', 'Lab 1', 'Dr. Kumar', None, 'CSV-TAG-03', 'plan_fund', 'working', <DisposalStatus.ACTIVE: 'active'>, '/storage/qr/NIT-CSE-26-073.png', None, None, None, None, 'Should not save', False, None, 'legacy')
+INFO     sqlalchemy.engine.Engine:base.py:1846 INSERT INTO asset_logs (asset_id, action, performed_by_id, old_value, new_value, performed_at) VALUES ($1::INTEGER, $2::VARCHAR, $3::INTEGER, $4::JSON, $5::JSON, $6::TIMESTAMP WITHOUT TIME ZONE) RETURNING asset_logs.id
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.1088s ago] (7, 'asset_registered', 5, 'null', '{"asset_tag": "NIT-CSE-26-073", "legacy_asset_tag": "CSV-TAG-03", "fund_source": "plan_fund", "condition": "working", "remarks": "Should not save", "asset_source": "legacy"}', datetime.datetime(2026, 6, 5, 5, 26, 0, 513862))
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT assets.id, assets.asset_tag, assets.name, assets.category, assets.department_id, assets.building, assets.room, assets.custodian, assets.serial_number, assets.legacy_asset_tag, assets.fund_source, assets.condition, assets.disposal_status, assets.qr_code_url, assets.purchase_date, assets.unit_cost, assets.warranty_expiry, assets.delivery_item_id, assets.remarks, assets.is_verified, assets.verified_at, assets.asset_source, assets.created_at 
+FROM assets 
+WHERE assets.legacy_asset_tag = $1::VARCHAR
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.0214s ago] ('CSV-TAG-01',)
+INFO     sqlalchemy.engine.Engine:base.py:2704 ROLLBACK
+=========================== short test summary info ============================
+FAILED tests/test_asset_registry_features.py::test_csv_import_atomicity_and_remarks
+========================= 1 failed, 4 passed in 1.44s ==========================

@@ -1,0 +1,44 @@
+# Root Git Ignore Rules
+
+# macOS metadata junk
+__MACOSX/
+.DS_Store
+Thumbs.db
+
+# VS Code / IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Python caches and virtual environments
+**/__pycache__/
+*.pyc
+nitinventory/backend/venv/
+nitinventory/backend/.venv/
+nitinventory/backend/env/
+nitinventory/backend/.env
+nitinventory/backend/storage/
+
+# Node environment and frontend dependencies
+nitinventory/frontend/node_modules/
+nitinventory/frontend/dist/
+nitinventory/frontend/.env.local
+nitinventory/frontend/.env.development.local
+nitinventory/frontend/.env.test.local
+nitinventory/frontend/.env.production.local
+nitinventory/frontend/npm-debug.log*
+nitinventory/frontend/yarn-debug.log*
+nitinventory/frontend/yarn-error.log*
+
+# Test logs & scratch files in nitinventory
+nitinventory/test_auth.py
+nitinventory/test_db.py
+nitinventory/token.txt
+nitinventory/scripts/
+nitinventory/pytest_cancellation.txt
+nitinventory/pytest_out.txt
+nitinventory/test_out.txt

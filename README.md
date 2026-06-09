@@ -5,7 +5,7 @@ A full-stack departmental physical asset registration, bulk import, QR-code base
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ Technology Stacks
 
 - **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
 - **Backend**: FastAPI + Python 3.12 + SQLAlchemy 2.0 (async pg)
